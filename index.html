@@ -41,7 +41,6 @@
             responses: [],
             timer: 20,
             timerInterval: null,
-            adminPasswordInput: '',
             adminError: false
         };
 
@@ -168,7 +167,7 @@
                                     <tr class="bg-slate-100 text-slate-700 text-xs uppercase font-semibold">
                                         <th class="p-3">Cohort / Format</th>
                                         <th class="p-3">Sample Size (n)</th>
-                                        <th class="p-3">Mean Score (/10)</th>
+                                        <th class="p-3">Mean Score (/30)</th>
                                         <th class="p-3">Standard Deviation</th>
                                     </tr>
                                 </thead>
@@ -237,10 +236,6 @@
             const cohorts = ['A', 'B', 'C'];
             state.cohort = cohorts[submissions.length % 3];
 
-            // Build 30 questions based on cohort sequence
-            // Group A: Num (1-10) -> Pie (11-20) -> Bar (21-30)
-            // Group B: Pie (1-10) -> Bar (11-20) -> Num (21-30)
-            // Group C: Bar (1-10) -> Num (11-20) -> Pie (21-30)
             let seq = [];
             if (state.cohort === 'A') {
                 fractionPairs.forEach(q => seq.push({ ...q, type: 'number' }));
@@ -318,7 +313,8 @@
         }
 
         function verifyAdmin() {
-            const pass = document.getElementById('adminPassInput').value;
+            const passInput = document.getElementById('adminPassInput');
+            const pass = passInput ? passInput.value : '';
             if (pass === '0000') {
                 state.view = 'admin_dashboard';
                 render();
@@ -413,13 +409,6 @@
         }
 
         function calculateANOVAStats() {
-            // Group participants by cohort
-            const groups = { A: [], B: [], C: [] };
-            submissions.forEach(s => {
-                if (groups[s.cohort]) groups.push(s.score);
-            });
-
-            // Calculate mean and SD per group
             const groupStats = {};
             let allScores = [];
             let k = 3;
