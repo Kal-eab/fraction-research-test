@@ -18,6 +18,8 @@
 
     <script>
         // Research Data & Configuration
+        // Change this password before publishing if you want a different admin password.
+        const ADMIN_PASSWORD = '0000';
         const fractionPairs = [
             { id: 1, n1: 5, d1: 7, n2: 11, d2: 15, correct: '<' },
             { id: 2, n1: 7, d1: 9, n2: 13, d2: 17, correct: '>' },
@@ -41,10 +43,18 @@
             responses: [],
             timer: 20,
             timerInterval: null,
+            adminPasswordInput: '',
             adminError: false
         };
 
-        const submissions = JSON.parse(localStorage.getItem('fraction_study_submissions') || '[]');
+        let submissions = [];
+        try {
+            const savedSubmissions = JSON.parse(localStorage.getItem('fraction_study_submissions') || '[]');
+            submissions = Array.isArray(savedSubmissions) ? savedSubmissions : [];
+        } catch (error) {
+            console.error('Could not read saved submissions:', error);
+            submissions = [];
+        }
 
         function initApp() {
             render();
@@ -115,7 +125,7 @@
                         <h2 class="text-xl font-bold text-slate-900 mb-4 text-center">Researcher Portal Login</h2>
                         <div class="space-y-4 mb-6">
                             <label class="block text-sm font-medium text-slate-700">Enter Admin Password</label>
-                            <input type="password" id="adminPassInput" placeholder="••••" class="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                            <input type="password" id="adminPassInput" placeholder="Enter admin password" onkeydown="if(event.key === 'Enter') verifyAdmin()" class="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
                             ${state.adminError ? '<p class="text-red-500 text-sm">Incorrect password. Please try again.</p>' : ''}
                         </div>
                         <div class="flex gap-4">
@@ -167,7 +177,7 @@
                                     <tr class="bg-slate-100 text-slate-700 text-xs uppercase font-semibold">
                                         <th class="p-3">Cohort / Format</th>
                                         <th class="p-3">Sample Size (n)</th>
-                                        <th class="p-3">Mean Score (/30)</th>
+                                        <th class="p-3">Mean Score (/10)</th>
                                         <th class="p-3">Standard Deviation</th>
                                     </tr>
                                 </thead>
@@ -236,6 +246,10 @@
             const cohorts = ['A', 'B', 'C'];
             state.cohort = cohorts[submissions.length % 3];
 
+            // Build 30 questions based on cohort sequence
+            // Group A: Num (1-10) -> Pie (11-20) -> Bar (21-30)
+            // Group B: Pie (1-10) -> Bar (11-20) -> Num (21-30)
+            // Group C: Bar (1-10) -> Num (11-20) -> Pie (21-30)
             let seq = [];
             if (state.cohort === 'A') {
                 fractionPairs.forEach(q => seq.push({ ...q, type: 'number' }));
@@ -301,7 +315,12 @@
                 timestamp: new Date().toISOString()
             };
             submissions.push(sub);
-            localStorage.setItem('fraction_study_submissions', JSON.stringify(submissions));
+            try {
+                localStorage.setItem('fraction_study_submissions', JSON.stringify(submissions));
+            } catch (error) {
+                console.error('Could not save submissions:', error);
+                alert('Your responses could not be saved in this browser. Please check your browser storage settings.');
+            }
             state.view = 'complete';
             render();
         }
@@ -313,14 +332,18 @@
         }
 
         function verifyAdmin() {
-            const passInput = document.getElementById('adminPassInput');
-            const pass = passInput ? passInput.value : '';
-            if (pass === '0000') {
+            const passwordInput = document.getElementById('adminPassInput');
+            const pass = passwordInput ? passwordInput.value : '';
+
+            if (pass === ADMIN_PASSWORD) {
+                state.adminError = false;
                 state.view = 'admin_dashboard';
                 render();
             } else {
                 state.adminError = true;
                 render();
+                const newPasswordInput = document.getElementById('adminPassInput');
+                if (newPasswordInput) newPasswordInput.focus();
             }
         }
 
@@ -409,6 +432,13 @@
         }
 
         function calculateANOVAStats() {
+            // Group participants by cohort
+            const groups = { A: [], B: [], C: [] };
+            submissions.forEach(s => {
+                if (groups[s.cohort]) groups[s.cohort].push(s.score);
+            });
+
+            // Calculate mean and SD per group
             const groupStats = {};
             let allScores = [];
             let k = 3;
