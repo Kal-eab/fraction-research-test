@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fraction Comparison Research Study</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 body{font-family:'Inter',sans-serif}
@@ -18,7 +19,10 @@ th,td{white-space:nowrap}
 <body class="bg-slate-50 text-slate-800 min-h-screen">
 <div id="app" class="w-full max-w-6xl mx-auto p-4 sm:p-6"></div>
 <script>
-const ADMIN_PASSWORD = '0000'; // Change this before publishing.
+const SUPABASE_URL = 'https://xfdlrtqfyhijklamqgkl.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_ZkM3ISihEYswAd1htTKzQA_epFjl_Ek';
+const ADMIN_EMAIL = 'genkaleab@gmail.com';
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const fractionPairs = [
             { id: 1, n1: 5, d1: 7, n2: 11, d2: 15, correct: '<' },
             { id: 2, n1: 7, d1: 9, n2: 13, d2: 17, correct: '>' },
@@ -31,18 +35,17 @@ const fractionPairs = [
             { id: 9, n1: 11, d1: 14, n2: 14, d2: 18, correct: '<' },
             { id: 10, n1: 13, d1: 17, n2: 9, d2: 12, correct: '>' }
         ];
-const STORAGE_KEY = 'fraction_study_submissions';
 let submissions = [];
-try {
-  const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-  submissions = Array.isArray(stored) ? stored : [];
-} catch(e) { console.error('Could not read saved data', e); }
+let state = {view:'welcome', participantName:'', cohort:'', questions:[], currentIndex:0, responses:[], timer:20, timerInterval:null, adminError:false, busy:false};
 
-let state = {view:'welcome', participantName:'', cohort:'', questions:[], currentIndex:0, responses:[], timer:20, timerInterval:null, adminError:false};
-
-function saveSubmissions(){
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions)); return true; }
-  catch(e){ console.error(e); alert('Could not save data in this browser. Export a backup and check browser storage.'); return false; }
+async function loadSubmissions(){
+  const {data,error}=await supabaseClient.from('student_submissions').select('*').order('timestamp',{ascending:false});
+  if(error) throw error;
+  submissions=(data||[]).map(row=>({...row, responses:Array.isArray(row.responses)?row.responses:[]}));
+}
+function showDatabaseError(error, action){
+  console.error(action, error);
+  alert(action+' failed: '+(error?.message||'Unknown database error')+'\n\nCheck your Supabase table, RLS policies, and internet connection.');
 }
 function escapeHtml(value){
   return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -97,8 +100,10 @@ function render(){
  } else if(state.view==='complete'){
   const s=state.responses.filter(r=>r.isCorrect).length;
   app.innerHTML=`<div class="bg-white shadow-xl rounded-2xl p-8 text-center"><div class="text-emerald-600 text-4xl mb-3">✓</div><h2 class="text-2xl font-bold mb-2">Assessment Completed!</h2><p class="text-slate-600 mb-2">Thank you, <b>${escapeHtml(state.participantName)}</b>.</p><p class="text-slate-700 mb-6">Your score: <b>${s}/30</b></p><button onclick="resetApp()" class="bg-indigo-600 text-white px-8 py-3 rounded-xl">Return Home</button></div>`;
+ } else if(state.view==='saving'){
+  app.innerHTML=`<div class="bg-white shadow-xl rounded-2xl p-8 text-center"><h2 class="text-xl font-bold mb-2">Your assessment is ready to submit</h2><p class="text-slate-600 mb-5">Your answers are kept on this page until the database confirms receipt.</p><button onclick="retrySubmission()" class="bg-indigo-600 text-white px-6 py-3 rounded-xl">Submit / Retry submission</button></div>`;
  } else if(state.view==='admin_login'){
-  app.innerHTML=`<div class="bg-white shadow-xl rounded-2xl p-8 max-w-md mx-auto"><h2 class="text-xl font-bold mb-4 text-center">Researcher Portal Login</h2><label class="block text-sm font-medium mb-2">Admin Password</label><input type="password" id="adminPassInput" onkeydown="if(event.key==='Enter')verifyAdmin()" placeholder="Enter password" class="w-full px-4 py-3 border rounded-lg mb-4">${state.adminError?'<p class="text-red-600 text-sm mb-3">Incorrect password. Try again.</p>':''}<div class="flex gap-3"><button onclick="verifyAdmin()" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg">Login</button><button onclick="resetApp()" class="px-5 bg-slate-200 rounded-lg">Cancel</button></div></div>`;
+  app.innerHTML=`<div class="bg-white shadow-xl rounded-2xl p-8 max-w-md mx-auto"><h2 class="text-xl font-bold mb-4 text-center">Researcher Portal Login</h2><label class="block text-sm font-medium mb-2">Researcher email</label><input type="email" id="adminEmailInput" value="${ADMIN_EMAIL}" class="w-full px-4 py-3 border rounded-lg mb-3"><label class="block text-sm font-medium mb-2">Password</label><input type="password" id="adminPassInput" onkeydown="if(event.key==='Enter')verifyAdmin()" placeholder="Supabase account password" class="w-full px-4 py-3 border rounded-lg mb-4">${state.adminError?'<p class="text-red-600 text-sm mb-3">Incorrect password. Try again.</p>':''}<div class="flex gap-3"><button onclick="verifyAdmin()" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg">Login</button><button onclick="resetApp()" class="px-5 bg-slate-200 rounded-lg">Cancel</button></div></div>`;
  } else {
   renderAdmin(app);
  }
@@ -108,7 +113,7 @@ function startTest(){
  const name=input?input.value.trim():'';
  if(!name){alert('Please enter the participant full name.');return}
  state.participantName=name;
- state.cohort=['A','B','C'][submissions.length%3];
+ state.cohort=['A','B','C'][Math.floor(Math.random()*3)];
  state.questions=getQuestionSet(); state.responses=[]; state.currentIndex=0; state.view='test'; render();
 }
 function startTimer(){
@@ -120,25 +125,35 @@ function submitAnswer(answer){
  state.responses.push({questionId:q.id,questionNumber:state.currentIndex+1,type:q.type,correctAnswer:q.correct,userAnswer:answer,isCorrect:answer===q.correct});
  if(state.currentIndex<29){state.currentIndex++;render()}else finishTest();
 }
-function finishTest(){
+async function finishTest(){
  const record={id:makeId(),name:state.participantName,cohort:state.cohort,source:'Online assessment',responses:state.responses.slice(),score:state.responses.filter(r=>r.isCorrect).length,timestamp:new Date().toISOString()};
- submissions.push(record);saveSubmissions();state.view='complete';render();
+ state.pendingRecord=record;state.view='saving';render();
+ await retrySubmission();
+}
+async function retrySubmission(){
+ const record=state.pendingRecord;if(!record)return;
+ const {error}=await supabaseClient.from('student_submissions').insert(record);
+ if(error){console.error('Submission failed',error);alert('Submission was not saved: '+error.message+'\nPlease check your connection and try again.');return}
+ state.pendingRecord=null;state.view='complete';render();
 }
 function makeId(){return 'S-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7).toUpperCase()}
 function showAdminLogin(){state.view='admin_login';state.adminError=false;render()}
-function verifyAdmin(){
- const input=document.getElementById('adminPassInput');
- if(input&&input.value===ADMIN_PASSWORD){state.adminError=false;state.view='admin_dashboard';render()}
- else{state.adminError=true;render();document.getElementById('adminPassInput')?.focus()}
+async function verifyAdmin(){
+ const email=document.getElementById('adminEmailInput')?.value.trim();
+ const password=document.getElementById('adminPassInput')?.value;
+ const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
+ if(error||email.toLowerCase()!==ADMIN_EMAIL.toLowerCase()){state.adminError=true;render();document.getElementById('adminPassInput')?.focus();return}
+ try{await loadSubmissions();state.adminError=false;state.view='admin_dashboard';render()}catch(e){showDatabaseError(e,'Loading researcher records')}
 }
 function resetApp(){clearInterval(state.timerInterval);state.view='welcome';state.participantName='';render()}
-function logout(){state.view='welcome';render()}
+async function logout(){await supabaseClient.auth.signOut();submissions=[];state.view='welcome';render()}
 function adminNav(view){
  state.view=view;render();
 }
+async function refreshRecords(){try{await loadSubmissions();render()}catch(e){showDatabaseError(e,'Refreshing records')}}
 function adminHeader(active){
  const tabs=[['admin_dashboard','Overview'],['admin_entry','Manual Data Entry'],['admin_raw','Raw Student Data'],['admin_analysis','Statistical Analysis']];
- return `<div class="mb-6"><div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4"><div><p class="text-sm text-indigo-600 font-semibold">RESEARCHER PORTAL</p><h1 class="text-2xl font-bold">Research Data Management</h1><p class="text-sm text-slate-500">All records are stored in this browser's local storage.</p></div><button onclick="logout()" class="px-4 py-2 bg-slate-200 rounded-lg">Logout</button></div><div class="flex flex-wrap gap-2">${tabs.map(([v,l])=>`<button onclick="adminNav('${v}')" class="px-4 py-2 rounded-lg text-sm font-semibold ${active===v?'bg-indigo-600 text-white':'bg-white border hover:bg-slate-100'}">${l}</button>`).join('')}</div></div>`;
+ return `<div class="mb-6"><div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4"><div><p class="text-sm text-indigo-600 font-semibold">RESEARCHER PORTAL</p><h1 class="text-2xl font-bold">Research Data Management</h1><p class="text-sm text-slate-500">Records are stored centrally in Supabase and can be viewed from your researcher account.</p></div><div class="flex gap-2"><button onclick="refreshRecords()" class="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg">Refresh data</button><button onclick="logout()" class="px-4 py-2 bg-slate-200 rounded-lg">Logout</button></div></div><div class="flex flex-wrap gap-2">${tabs.map(([v,l])=>`<button onclick="adminNav('${v}')" class="px-4 py-2 rounded-lg text-sm font-semibold ${active===v?'bg-indigo-600 text-white':'bg-white border hover:bg-slate-100'}">${l}</button>`).join('')}</div></div>`;
 }
 function renderAdmin(app){
  if(state.view==='admin_dashboard'){
@@ -146,7 +161,7 @@ function renderAdmin(app){
   app.innerHTML=adminHeader('admin_dashboard')+`<div class="grid sm:grid-cols-3 gap-4 mb-6">
    ${metric('Total students',submissions.length)}${metric('Average total score',submissions.length?avg.toFixed(2)+'/30':'—')}${metric('Records with raw answers',submissions.filter(s=>normalizeResponses(s).length===30).length)}
   </div><div class="grid md:grid-cols-2 gap-4"><div class="bg-white rounded-xl border p-5"><h2 class="font-bold text-lg mb-2">Raw data collection</h2><p class="text-sm text-slate-600 mb-4">Enter each student's 30 individual answers from your paper records. Scores are calculated automatically.</p><button onclick="adminNav('admin_entry')" class="bg-indigo-600 text-white px-4 py-2 rounded-lg">Enter student data</button></div><div class="bg-white rounded-xl border p-5"><h2 class="font-bold text-lg mb-2">Statistical results</h2><p class="text-sm text-slate-600 mb-4">View group summaries, ANOVA calculations, F-statistics, p-values, and effect sizes.</p><button onclick="adminNav('admin_analysis')" class="bg-indigo-600 text-white px-4 py-2 rounded-lg">Open analysis</button></div></div>
-  <div class="bg-white rounded-xl border p-5 mt-5"><div class="flex flex-wrap justify-between gap-3 items-center"><h2 class="font-bold">Data backup</h2><div class="flex gap-2"><button onclick="exportCSV()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm">Export full CSV</button><button onclick="exportJSON()" class="bg-slate-700 text-white px-4 py-2 rounded-lg text-sm">Export JSON backup</button></div></div><p class="text-xs text-slate-500 mt-2">Download backups regularly. Browser local storage is not shared between devices or browsers.</p></div>`;
+  <div class="bg-white rounded-xl border p-5 mt-5"><div class="flex flex-wrap justify-between gap-3 items-center"><h2 class="font-bold">Data backup</h2><div class="flex gap-2"><button onclick="exportCSV()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm">Export full CSV</button><button onclick="exportJSON()" class="bg-slate-700 text-white px-4 py-2 rounded-lg text-sm">Export JSON backup</button></div></div><p class="text-xs text-slate-500 mt-2">Download backups regularly. Student submissions are saved in the shared Supabase database.</p></div>`;
  }else if(state.view==='admin_entry'){
   app.innerHTML=adminHeader('admin_entry')+`<div class="bg-white rounded-xl border p-5">
    <h2 class="text-xl font-bold mb-1">Enter one student's raw answers</h2><p class="text-sm text-slate-500 mb-5">Enter the answer written on the paper for every question. Leave unanswered questions as “No answer”. Scores will be calculated when you save.</p>
@@ -160,7 +175,7 @@ function renderAdmin(app){
   app.innerHTML=adminHeader('admin_raw')+`<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="text-xl font-bold">Complete raw student records</h2><p class="text-sm text-slate-500">Expand a student to inspect all 30 answers and scoring.</p></div><div class="flex gap-2"><button onclick="exportCSV()" class="bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm">Export CSV</button><button onclick="exportJSON()" class="bg-slate-700 text-white px-3 py-2 rounded-lg text-sm">Export JSON</button></div></div>${submissions.length?rows:'<div class="bg-white border rounded-xl p-8 text-center text-slate-500">No student records yet. Use Manual Data Entry to add paper-based results.</div>'}`;
  }else if(state.view==='admin_analysis'){
   const overall=anovaFor('total'), sections=[['number','Fraction'],['pie','Pie chart'],['bar','Bar diagram']].map(([type,label])=>({label,...anovaFor(type)}));
-  app.innerHTML=adminHeader('admin_analysis')+`<div class="bg-white border rounded-xl p-5 mb-5"><h2 class="text-xl font-bold mb-1">Statistical Analysis</h2><p class="text-sm text-slate-500 mb-4">One-way ANOVA compares the mean scores of Groups A, B, and C. Results use student records currently stored in this browser.</p>${anovaPanel('Overall total score (/30)',overall)}</div>
+  app.innerHTML=adminHeader('admin_analysis')+`<div class="bg-white border rounded-xl p-5 mb-5"><h2 class="text-xl font-bold mb-1">Statistical Analysis</h2><p class="text-sm text-slate-500 mb-4">One-way ANOVA compares the mean scores of Groups A, B, and C. Results use student records loaded from the shared Supabase database.</p>${anovaPanel('Overall total score (/30)',overall)}</div>
   <div class="bg-white border rounded-xl p-5"><h2 class="text-xl font-bold mb-4">Analysis by question format</h2><div class="space-y-5">${sections.map(x=>anovaPanel(x.label+' score (/10)',x)).join('')}</div></div>
   <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mt-5 text-sm text-amber-900"><b>Interpretation:</b> A p-value below 0.05 is evidence that at least one cohort mean differs. ANOVA does not identify which specific groups differ. The analysis requires enough students in the groups; small or empty groups will be marked insufficient.</div>`;
  }
@@ -169,17 +184,20 @@ function metric(label,value){return `<div class="bg-white border rounded-xl p-5"
 function updateEntryCounts(){
  ['number','pie','bar'].forEach((type,idx)=>{let count=0;for(let i=1+idx*10;i<=10+idx*10;i++){const el=document.getElementById('ans_'+i);if(el&&el.value!=='-')count++}const target=document.getElementById('sectionCount_'+type);if(target)target.textContent=count+'/10 answered'});
 }
-function saveManualEntry(event){
+async function saveManualEntry(event){
  event.preventDefault();const name=document.getElementById('manualName').value.trim();const cohort=document.getElementById('manualCohort').value;
  if(!name){alert('Enter the student name.');return}
  const responses=getQuestionSet().map((q,i)=>{const answer=document.getElementById('ans_'+(i+1)).value;return {questionId:q.id,questionNumber:i+1,type:q.type,correctAnswer:q.correct,userAnswer:answer,isCorrect:answer===q.correct}});
  const record={id:makeId(),name,cohort,source:'Manual paper data entry',responses,score:responses.filter(r=>r.isCorrect).length,timestamp:new Date().toISOString()};
- submissions.push(record);
- if(saveSubmissions()){alert('Student raw data saved. Total score: '+record.score+'/30');render()}
+ const {error}=await supabaseClient.from('student_submissions').insert(record);
+ if(error){showDatabaseError(error,'Saving manual student data');return}
+ await loadSubmissions();alert('Student raw data saved to Supabase. Total score: '+record.score+'/30');render();
 }
-function deleteRecord(id){
- if(!confirm("Delete this student's complete raw record? This cannot be undone unless you have a backup."))return;
- submissions=submissions.filter(s=>String(s.id||'')!==String(id));saveSubmissions();render();
+async function deleteRecord(id){
+ if(!confirm("Delete this student's complete raw record from the shared database? This cannot be undone unless you have a backup."))return;
+ const {error}=await supabaseClient.from('student_submissions').delete().eq('id',id);
+ if(error){showDatabaseError(error,'Deleting student record');return}
+ await loadSubmissions();render();
 }
 function exportCSV(){
  if(!submissions.length){alert('No records to export.');return}
@@ -231,8 +249,14 @@ function renderVisual(q){
 }
 function createPieSvg(num,den){const size=100,c=50,r=40,step=360/den;let paths='';for(let i=0;i<den;i++){const a=i*step-90,b=(i+1)*step-90,x1=c+r*Math.cos(a*Math.PI/180),y1=c+r*Math.sin(a*Math.PI/180),x2=c+r*Math.cos(b*Math.PI/180),y2=c+r*Math.sin(b*Math.PI/180);paths+=`<path d="M ${c} ${c} L ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2} Z" fill="${i<num?'#cbd5e1':'white'}" stroke="#334155" stroke-width="1.5"/>`}return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>`}
 function createBarSvg(num,den){const w=200,h=24,sw=w/den;let rects='';for(let i=0;i<den;i++)rects+=`<rect x="${i*sw}" y="0" width="${sw}" height="${h}" fill="${i<num?'#cbd5e1':'white'}" stroke="#334155" stroke-width="1.5"/>`;return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${rects}</svg>`}
-window.addEventListener('storage',e=>{if(e.key===STORAGE_KEY){try{submissions=JSON.parse(e.newValue||'[]')}catch(_){submissions=[]}if(state.view.startsWith('admin_'))render()}});
-window.onload=render;
+window.onload=async()=>{
+  render();
+  const {data}=await supabaseClient.auth.getSession();
+  const user=data?.session?.user;
+  if(user?.email?.toLowerCase()===ADMIN_EMAIL.toLowerCase()){
+    try{await loadSubmissions();state.view='admin_dashboard';render()}catch(e){console.error('Could not restore researcher session',e)}
+  }
+};
 </script>
 </body>
 </html>
