@@ -23,18 +23,20 @@ const SUPABASE_URL = 'https://xfdlrtqfyhijklamqgkl.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_ZkM3ISihEYswAd1htTKzQA_epFjl_Ek';
 const ADMIN_EMAIL = 'genkaleab@gmail.com';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
 const fractionPairs = [
-            { id: 1, n1: 5, d1: 7, n2: 11, d2: 15, correct: '<' },
-            { id: 2, n1: 7, d1: 9, n2: 13, d2: 17, correct: '>' },
-            { id: 3, n1: 8, d1: 11, n2: 11, d2: 15, correct: '<' },
-            { id: 4, n1: 9, d1: 13, n2: 7, d2: 10, correct: '>' },
-            { id: 5, n1: 11, d1: 16, n2: 13, d2: 19, correct: '<' },
-            { id: 6, n1: 7, d1: 12, n2: 9, d2: 16, correct: '>' },
-            { id: 7, n1: 13, d1: 18, n2: 8, d2: 11, correct: '<' },
-            { id: 8, n1: 10, d1: 13, n2: 16, d2: 21, correct: '>' },
-            { id: 9, n1: 11, d1: 14, n2: 14, d2: 18, correct: '<' },
-            { id: 10, n1: 13, d1: 17, n2: 9, d2: 12, correct: '>' }
-        ];
+    { id: 1, n1: 5, d1: 7, n2: 11, d2: 15, correct: '<' },
+    { id: 2, n1: 7, d1: 9, n2: 13, d2: 17, correct: '>' },
+    { id: 3, n1: 8, d1: 11, n2: 11, d2: 15, correct: '<' },
+    { id: 4, n1: 9, d1: 13, n2: 7, d2: 10, correct: '<' },
+    { id: 5, n1: 11, d1: 16, n2: 13, d2: 19, correct: '>' },
+    { id: 6, n1: 7, d1: 12, n2: 9, d2: 16, correct: '>' },
+    { id: 7, n1: 13, d1: 18, n2: 8, d2: 11, correct: '<' },
+    { id: 8, n1: 10, d1: 13, n2: 16, d2: 21, correct: '>' },
+    { id: 9, n1: 11, d1: 14, n2: 14, d2: 18, correct: '>' },
+    { id: 10, n1: 13, d1: 17, n2: 9, d2: 12, correct: '>' }
+];
+
 let submissions = [];
 let state = {view:'welcome', participantName:'', cohort:'', questions:[], currentIndex:0, responses:[], timer:20, timerInterval:null, adminError:false, busy:false};
 
